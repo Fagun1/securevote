@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: securevote-api
+    runtime: node
+    rootDir: apps/api
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: VOTE_ENCRYPTION_KEY
+        sync: false
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: BOOTSTRAP_SUPER_ADMIN_TOKEN
+        sync: false
