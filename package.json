@@ -1,0 +1,17 @@
+{
+  "name": "securevote-ai",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @securevote/api",
+    "dev:web": "npm run dev -w @securevote/web",
+    "build:api": "npm run build -w @securevote/api",
+    "build:web": "npm run build -w @securevote/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

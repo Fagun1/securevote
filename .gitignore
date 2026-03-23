@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env.local
+
+# Logs and OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Test / coverage
+coverage/
+
+# Dependencies (monorepo-safe)
+**/node_modules/
+
+# Build outputs
+**/.next/
+**/dist/
+**/build/
+**/*.tsbuildinfo
+
+# Python venvs (covers .venv and .venv311, etc.)
+**/.venv*/
+**/venv/
