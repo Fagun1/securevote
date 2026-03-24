@@ -23,42 +23,64 @@ async function run(): Promise<void> {
   }
 
   const to = process.argv[2] || env.SMTP_USER!;
-  let host = env.SMTP_HOST!;
-  let tlsServername: string | undefined;
+  const hostTargets: Array<{ host: string; tlsServername?: string; port: number; secure: boolean }> = [];
   if (env.SMTP_FORCE_IPV4) {
     try {
-      const addr = await lookup(env.SMTP_HOST!, { family: 4 });
-      host = addr.address;
-      tlsServername = env.SMTP_HOST!;
+      const addrs = await lookup(env.SMTP_HOST!, { family: 4, all: true });
+      for (const addr of addrs) {
+        hostTargets.push({
+          host: addr.address,
+          tlsServername: env.SMTP_HOST!,
+          port: env.SMTP_PORT!,
+          secure: env.SMTP_SECURE,
+        });
+      }
     } catch {
-      host = env.SMTP_HOST!;
+      // fall back to hostname target below
     }
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE,
-    ...(tlsServername ? { tls: { servername: tlsServername } } : {}),
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS,
-    },
-  });
+  hostTargets.push({ host: env.SMTP_HOST!, port: env.SMTP_PORT!, secure: env.SMTP_SECURE });
+  if (env.SMTP_HOST!.includes("gmail.com") && env.SMTP_PORT === 587 && env.SMTP_SECURE === false) {
+    hostTargets.push(...hostTargets.map((t) => ({ ...t, port: 465, secure: true })));
+  }
 
-  await transporter.verify();
-  const info = await transporter.sendMail({
-    from: env.EMAIL_FROM!,
-    to,
-    subject: "SecureVote SMTP test",
-    text: [
-      "SMTP test email from SecureVote API.",
-      `Sent at: ${new Date().toISOString()}`,
-      `Server: ${env.SMTP_HOST}:${env.SMTP_PORT} (secure=${String(env.SMTP_SECURE)})`,
-    ].join("\n"),
-  });
+  let sent = false;
+  let lastErr: unknown = null;
+  for (const t of hostTargets) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: t.host,
+        port: t.port,
+        secure: t.secure,
+        ...(t.tlsServername ? { tls: { servername: t.tlsServername } } : {}),
+        auth: {
+          user: env.SMTP_USER,
+          pass: env.SMTP_PASS!.replace(/\s+/g, ""),
+        },
+      });
 
-  console.log(`SMTP OK. Message sent to ${to}. messageId=${info.messageId}`);
+      await transporter.verify();
+      const info = await transporter.sendMail({
+        from: env.EMAIL_FROM!,
+        to,
+        subject: "SecureVote SMTP test",
+        text: [
+          "SMTP test email from SecureVote API.",
+          `Sent at: ${new Date().toISOString()}`,
+          `Server: ${env.SMTP_HOST}:${t.port} (secure=${String(t.secure)})`,
+        ].join("\n"),
+      });
+
+      console.log(`SMTP OK. Message sent to ${to}. messageId=${info.messageId}`);
+      sent = true;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (!sent) throw lastErr instanceof Error ? lastErr : new Error("SMTP test failed");
 }
 
 void run().catch((err) => {

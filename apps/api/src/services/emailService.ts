@@ -6,16 +6,62 @@ function hasSmtpConfig(env: Env): boolean {
   return Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_USER && env.SMTP_PASS && env.EMAIL_FROM);
 }
 
-async function resolveSmtpHost(env: Env): Promise<{ host: string; tlsServername?: string }> {
-  const host = env.SMTP_HOST!;
-  if (!env.SMTP_FORCE_IPV4) return { host };
+type SmtpTarget = {
+  host: string;
+  port: number;
+  secure: boolean;
+  tlsServername?: string;
+};
 
-  try {
-    const addr = await lookup(host, { family: 4 });
-    return { host: addr.address, tlsServername: host };
-  } catch {
-    return { host };
+function isRetryableSmtpConnectionError(err: unknown): boolean {
+  const code = String((err as { code?: unknown })?.code || "");
+  return ["ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "ESOCKET", "ECONNRESET"].includes(code);
+}
+
+async function resolveSmtpTargets(env: Env): Promise<SmtpTarget[]> {
+  const baseHost = env.SMTP_HOST!;
+  const targets: SmtpTarget[] = [];
+
+  if (env.SMTP_FORCE_IPV4) {
+    try {
+      const addrs = await lookup(baseHost, { family: 4, all: true });
+      for (const addr of addrs) {
+        targets.push({
+          host: addr.address,
+          port: env.SMTP_PORT!,
+          secure: env.SMTP_SECURE,
+          tlsServername: baseHost,
+        });
+      }
+    } catch {
+      // fall through to hostname target below
+    }
   }
+
+  // Hostname target as fallback.
+  targets.push({
+    host: baseHost,
+    port: env.SMTP_PORT!,
+    secure: env.SMTP_SECURE,
+  });
+
+  // Gmail fallback: if STARTTLS on 587 times out, retry SMTPS 465.
+  if (baseHost.includes("gmail.com") && env.SMTP_PORT === 587 && env.SMTP_SECURE === false) {
+    const gmail465: SmtpTarget[] = targets.map((t) => ({ ...t, port: 465, secure: true }));
+    targets.push(...gmail465);
+  }
+
+  // De-duplicate targets.
+  const seen = new Set<string>();
+  const deduped: SmtpTarget[] = [];
+  for (const t of targets) {
+    const key = `${t.host}|${t.port}|${String(t.secure)}|${t.tlsServername || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(t);
+  }
+
+  return deduped;
 }
 
 export async function sendCredentialsEmail(params: {
@@ -36,20 +82,10 @@ export async function sendCredentialsEmail(params: {
     return;
   }
 
-  const resolved = await resolveSmtpHost(env);
+  const targets = await resolveSmtpTargets(env);
+  const smtpPass = env.SMTP_PASS!.replace(/\s+/g, "");
 
-  const transporter = nodemailer.createTransport({
-    host: resolved.host,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE,
-    ...(resolved.tlsServername ? { tls: { servername: resolved.tlsServername } } : {}),
-    auth: {
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS,
-    },
-  });
-
-  await transporter.sendMail({
+  const message = {
     from: env.EMAIL_FROM,
     to,
     subject: `SecureVote AI ${role} account credentials`,
@@ -67,5 +103,30 @@ export async function sendCredentialsEmail(params: {
       "",
       "Please change your password after first login.",
     ].join("\n"),
-  });
+  };
+
+  let lastErr: unknown = null;
+  for (const target of targets) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: target.host,
+        port: target.port,
+        secure: target.secure,
+        ...(target.tlsServername ? { tls: { servername: target.tlsServername } } : {}),
+        auth: {
+          user: env.SMTP_USER,
+          pass: smtpPass,
+        },
+      });
+      await transporter.sendMail(message);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableSmtpConnectionError(err)) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error("SMTP delivery failed");
 }
