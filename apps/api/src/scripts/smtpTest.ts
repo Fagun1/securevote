@@ -1,5 +1,6 @@
 import { config as loadDotEnv } from "dotenv";
 import nodemailer from "nodemailer";
+import { lookup } from "node:dns/promises";
 import { loadEnv } from "../config/env.js";
 
 loadDotEnv();
@@ -22,10 +23,23 @@ async function run(): Promise<void> {
   }
 
   const to = process.argv[2] || env.SMTP_USER!;
+  let host = env.SMTP_HOST!;
+  let tlsServername: string | undefined;
+  if (env.SMTP_FORCE_IPV4) {
+    try {
+      const addr = await lookup(env.SMTP_HOST!, { family: 4 });
+      host = addr.address;
+      tlsServername = env.SMTP_HOST!;
+    } catch {
+      host = env.SMTP_HOST!;
+    }
+  }
+
   const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
+    host,
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
+    ...(tlsServername ? { tls: { servername: tlsServername } } : {}),
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
@@ -51,4 +65,3 @@ void run().catch((err) => {
   console.error(`SMTP test failed: ${(err as Error).message}`);
   process.exit(1);
 });
-

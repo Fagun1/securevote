@@ -42,6 +42,11 @@ const envSchema = z.object({
     .optional()
     .default("false")
     .transform((v) => v === "true"),
+  SMTP_FORCE_IPV4: z
+    .enum(["true", "false"])
+    .optional()
+    .default("true")
+    .transform((v) => v === "true"),
   SMTP_USER: emptyToUndefined(z.string().optional()),
   SMTP_PASS: emptyToUndefined(z.string().optional()),
   EMAIL_FROM: emptyToUndefined(z.string().email().optional()),

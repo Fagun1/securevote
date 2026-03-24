@@ -1,8 +1,21 @@
 import nodemailer from "nodemailer";
+import { lookup } from "node:dns/promises";
 import type { Env } from "../config/env.js";
 
 function hasSmtpConfig(env: Env): boolean {
   return Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_USER && env.SMTP_PASS && env.EMAIL_FROM);
+}
+
+async function resolveSmtpHost(env: Env): Promise<{ host: string; tlsServername?: string }> {
+  const host = env.SMTP_HOST!;
+  if (!env.SMTP_FORCE_IPV4) return { host };
+
+  try {
+    const addr = await lookup(host, { family: 4 });
+    return { host: addr.address, tlsServername: host };
+  } catch {
+    return { host };
+  }
 }
 
 export async function sendCredentialsEmail(params: {
@@ -23,10 +36,13 @@ export async function sendCredentialsEmail(params: {
     return;
   }
 
+  const resolved = await resolveSmtpHost(env);
+
   const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
+    host: resolved.host,
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
+    ...(resolved.tlsServername ? { tls: { servername: resolved.tlsServername } } : {}),
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
