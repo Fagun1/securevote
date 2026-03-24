@@ -5,6 +5,7 @@ import type { Env } from "../config/env.js";
 import { HttpError } from "../middleware/errorHandler.js";
 import {
   loginUser,
+  promoteUserToAdminByEmail,
   promoteSelfToSuperAdmin,
   registerUser,
   type LoginInput,
@@ -24,14 +25,21 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(200),
-  framesBase64: z.array(z.string().min(10)).min(3).max(30),
+  framesBase64: z.array(z.string().min(10)).max(30).optional(),
+  faceImageBase64: z.string().min(10).optional(),
+});
+
+const promoteUserSchema = z.object({
+  email: z.string().email(),
 });
 
 export function createAuthController(env: Env, pool: Pool) {
   async function register(req: Request, res: Response) {
     const ip = getClientIp(req);
     const body = registerSchema.safeParse(req.body);
-    if (!body.success) throw new HttpError(400, "Invalid request body");
+    if (!body.success) {
+      throw new HttpError(400, "Invalid request body", body.error.flatten().fieldErrors);
+    }
 
     const input: RegisterInput = {
       name: body.data.name,
@@ -54,13 +62,16 @@ export function createAuthController(env: Env, pool: Pool) {
 
   async function login(req: Request, res: Response) {
     const body = loginSchema.safeParse(req.body);
-    if (!body.success) throw new HttpError(400, "Invalid request body");
+    if (!body.success) {
+      throw new HttpError(400, "Invalid request body", body.error.flatten().fieldErrors);
+    }
 
     const ip = getClientIp(req as any);
     const input: LoginInput = {
       email: body.data.email.toLowerCase(),
       password: body.data.password,
       framesBase64: body.data.framesBase64,
+      faceImageBase64: body.data.faceImageBase64,
     };
 
     try {
@@ -101,7 +112,9 @@ export function createAuthController(env: Env, pool: Pool) {
         faceImageBase64: z.string().min(10),
       })
       .safeParse(req.body);
-    if (!body.success) throw new HttpError(400, "Invalid request body");
+    if (!body.success) {
+      throw new HttpError(400, "Invalid request body", body.error.flatten().fieldErrors);
+    }
 
     const token = body.data.token ?? headerToken;
     if (token !== env.BOOTSTRAP_SUPER_ADMIN_TOKEN) throw new HttpError(403, "Invalid bootstrap token");
@@ -144,6 +157,23 @@ export function createAuthController(env: Env, pool: Pool) {
     res.json(data);
   }
 
-  return { register, login, me, superAdminBootstrap, promoteSelf };
+  async function promoteUser(req: Request, res: Response) {
+    const auth = (req as any).auth as { sub?: unknown; role?: unknown };
+    const userId = auth?.sub;
+    const role = auth?.role;
+    if (typeof userId !== "string") throw new HttpError(401, "Not authenticated");
+    if (role !== "super_admin") throw new HttpError(403, "Forbidden");
+
+    const body = promoteUserSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new HttpError(400, "Invalid request body", body.error.flatten().fieldErrors);
+    }
+
+    const ip = getClientIp(req);
+    const data = await promoteUserToAdminByEmail(pool, { userId, role, ip }, body.data.email);
+    res.json({ ok: true, user: data });
+  }
+
+  return { register, login, me, superAdminBootstrap, promoteSelf, promoteUser };
 }
 

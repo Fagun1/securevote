@@ -7,12 +7,6 @@ export default function Home() {
         <a className="rounded bg-neutral-900 px-4 py-2 text-white" href="/login">
           Login
         </a>
-        <a className="rounded border px-4 py-2" href="/register">
-          Register
-        </a>
-        <a className="rounded border px-4 py-2" href="/admin">
-          Admin
-        </a>
       </div>
     </main>
   );

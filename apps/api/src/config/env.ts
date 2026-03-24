@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), schema);
+
 const voteKeySchema = z
   .string()
   .min(1, "VOTE_ENCRYPTION_KEY is required")
@@ -32,6 +35,16 @@ const envSchema = z.object({
   VOTE_ENCRYPTION_KEY: voteKeySchema,
   AI_SERVICE_URL: z.string().url().optional().default("http://127.0.0.1:5001"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  SMTP_HOST: emptyToUndefined(z.string().optional()),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false")
+    .transform((v) => v === "true"),
+  SMTP_USER: emptyToUndefined(z.string().optional()),
+  SMTP_PASS: emptyToUndefined(z.string().optional()),
+  EMAIL_FROM: emptyToUndefined(z.string().email().optional()),
   BOOTSTRAP_SUPER_ADMIN_TOKEN: z.string().optional(),
 });
 

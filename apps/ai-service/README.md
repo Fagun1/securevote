@@ -1,6 +1,6 @@
 # SecureVote AI Service (Flask)
 
-Face encoding (`/encode-face`), matching (`/match-face`), and blink detection (`/detect-blink`) using `face_recognition` and OpenCV.
+Face encoding (`/encode-face`), matching (`/match-face`), and blink detection (`/detect-blink`) using `face_recognition` with `dlib` landmarks/encodings.
 
 ## Setup (Windows)
 

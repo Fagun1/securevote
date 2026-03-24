@@ -120,7 +120,20 @@ export default function AnalyticsPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-semibold">Analytics</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Analytics</h1>
+        <button
+          className="rounded border px-3 py-2 text-sm"
+          type="button"
+          onClick={() => {
+            clearToken();
+            setToken(null);
+            router.replace("/login");
+          }}
+        >
+          Logout
+        </button>
+      </div>
       {status ? <div className="mt-2 text-sm text-amber-700">{status}</div> : null}
 
       <div className="mt-4 grid gap-4 md:grid-cols-3">

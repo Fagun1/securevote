@@ -11,12 +11,14 @@ CREATE TABLE users (
   password TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'voter' CHECK (role IN ('voter', 'admin', 'super_admin')),
   has_voted BOOLEAN NOT NULL DEFAULT FALSE,
+  is_verified BOOLEAN NOT NULL DEFAULT FALSE,
   face_encoding JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_users_email_lower ON users (lower(email));
+CREATE UNIQUE INDEX users_single_super_admin ON users ((TRUE)) WHERE role = 'super_admin';
 
 CREATE TABLE candidates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

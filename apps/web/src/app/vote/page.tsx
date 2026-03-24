@@ -56,7 +56,11 @@ export default function VotePage() {
         token,
         body: { candidateId },
       });
-      setStatus("Vote submitted successfully.");
+      // Security/UX: logout automatically right after a successful vote.
+      clearToken();
+      setToken(null);
+      setStatus("Vote submitted successfully. Logging out...");
+      router.replace("/login");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Vote failed");
       if ((err as Error).message?.toLowerCase().includes("token")) clearToken();
@@ -67,7 +71,20 @@ export default function VotePage() {
 
   return (
     <main className="mx-auto max-w-xl p-6">
-      <h1 className="text-2xl font-semibold">Cast Vote</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Cast Vote</h1>
+        <button
+          className="rounded border px-3 py-2 text-sm"
+          type="button"
+          onClick={() => {
+            clearToken();
+            setToken(null);
+            router.replace("/login");
+          }}
+        >
+          Logout
+        </button>
+      </div>
       {status ? <div className="mt-3 text-sm text-amber-700">{status}</div> : null}
 
       {!electionActive ? (

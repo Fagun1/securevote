@@ -12,6 +12,7 @@ import { electionRoutes } from "./routes/electionRoutes.js";
 import { votingRoutes } from "./routes/votingRoutes.js";
 import { analyticsRoutes } from "./routes/analyticsRoutes.js";
 import { blockchainRoutes } from "./routes/blockchainRoutes.js";
+import { adminManagementRoutes } from "./routes/adminManagementRoutes.js";
 
 export function createApp(env: Env, pool: Pool): express.Application {
   const app = express();
@@ -41,6 +42,7 @@ export function createApp(env: Env, pool: Pool): express.Application {
   app.get("/favicon.ico", (_req, res) => res.status(204).end());
 
   app.use(authRoutes(env, pool));
+  app.use(adminManagementRoutes(env, pool));
   app.use(candidateRoutes(env, pool));
   app.use(electionRoutes(env, pool));
   app.use(votingRoutes(env, pool));

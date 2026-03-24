@@ -3,6 +3,7 @@ import { config as loadDotEnv } from "dotenv";
 import { loadEnv } from "./config/env.js";
 import { createApp } from "./app.js";
 import { closePool, getPool } from "./db/pool.js";
+import { enforceSecurityConstraints } from "./db/enforceConstraints.js";
 import { Server } from "socket.io";
 import { verifyJwt } from "./utils/jwt.js";
 import { createAnalyticsController } from "./controllers/analyticsController.js";
@@ -44,9 +45,18 @@ io.on("connection", (socket) => {
   });
 });
 
-const port = env.PORT;
-httpServer.listen(port, () => {
-  console.log(`SecureVote API listening on http://localhost:${port}`);
+async function start(): Promise<void> {
+  await enforceSecurityConstraints(pool);
+  const port = env.PORT;
+  httpServer.listen(port, () => {
+    console.log(`SecureVote API listening on http://localhost:${port}`);
+  });
+}
+
+void start().catch(async (e) => {
+  console.error("Startup failed", e);
+  await closePool();
+  process.exit(1);
 });
 
 async function shutdown(signal: string): Promise<void> {
