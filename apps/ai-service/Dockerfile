@@ -1,4 +1,4 @@
-FROM ageitgey/face_recognition:latest
+FROM fedest/face_recognition:latest
 
 WORKDIR /app
 
