@@ -1,4 +1,4 @@
-FROM ageitgey/face_recognition:latest
+FROM fedest/face_recognition:latest
 
 WORKDIR /app
 
@@ -11,4 +11,3 @@ COPY app.py /app/app.py
 ENV PORT=10000
 
 CMD ["python", "app.py"]
-
