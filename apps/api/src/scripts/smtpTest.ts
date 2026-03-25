@@ -1,6 +1,6 @@
 import { config as loadDotEnv } from "dotenv";
 import nodemailer from "nodemailer";
-import { lookup } from "node:dns/promises";
+import { resolve4 } from "node:dns/promises";
 import { loadEnv } from "../config/env.js";
 
 loadDotEnv();
@@ -26,23 +26,29 @@ async function run(): Promise<void> {
   const hostTargets: Array<{ host: string; tlsServername?: string; port: number; secure: boolean }> = [];
   if (env.SMTP_FORCE_IPV4) {
     try {
-      const addrs = await lookup(env.SMTP_HOST!, { family: 4, all: true });
-      for (const addr of addrs) {
+      const addrs = await resolve4(env.SMTP_HOST!);
+      for (const address of addrs) {
         hostTargets.push({
-          host: addr.address,
+          host: address,
           tlsServername: env.SMTP_HOST!,
           port: env.SMTP_PORT!,
           secure: env.SMTP_SECURE,
         });
       }
     } catch {
-      // fall back to hostname target below
+      // Keep empty to fail clearly when forcing IPv4.
     }
   }
 
-  hostTargets.push({ host: env.SMTP_HOST!, port: env.SMTP_PORT!, secure: env.SMTP_SECURE });
+  if (!env.SMTP_FORCE_IPV4) {
+    hostTargets.push({ host: env.SMTP_HOST!, port: env.SMTP_PORT!, secure: env.SMTP_SECURE });
+  }
   if (env.SMTP_HOST!.includes("gmail.com") && env.SMTP_PORT === 587 && env.SMTP_SECURE === false) {
     hostTargets.push(...hostTargets.map((t) => ({ ...t, port: 465, secure: true })));
+  }
+
+  if (hostTargets.length === 0 && env.SMTP_FORCE_IPV4) {
+    throw new Error("No IPv4 SMTP endpoints resolved for configured host.");
   }
 
   let sent = false;

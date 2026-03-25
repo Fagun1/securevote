@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { lookup } from "node:dns/promises";
+import { resolve4 } from "node:dns/promises";
 import type { Env } from "../config/env.js";
 
 function hasSmtpConfig(env: Env): boolean {
@@ -24,26 +24,28 @@ async function resolveSmtpTargets(env: Env): Promise<SmtpTarget[]> {
 
   if (env.SMTP_FORCE_IPV4) {
     try {
-      const addrs = await lookup(baseHost, { family: 4, all: true });
-      for (const addr of addrs) {
+      const addrs = await resolve4(baseHost);
+      for (const address of addrs) {
         targets.push({
-          host: addr.address,
+          host: address,
           port: env.SMTP_PORT!,
           secure: env.SMTP_SECURE,
           tlsServername: baseHost,
         });
       }
     } catch {
-      // fall through to hostname target below
+      // No IPv4 DNS answer available; keep targets empty and fail clearly below.
     }
   }
 
-  // Hostname target as fallback.
-  targets.push({
-    host: baseHost,
-    port: env.SMTP_PORT!,
-    secure: env.SMTP_SECURE,
-  });
+  // Only use hostname fallback when IPv4 forcing is disabled.
+  if (!env.SMTP_FORCE_IPV4) {
+    targets.push({
+      host: baseHost,
+      port: env.SMTP_PORT!,
+      secure: env.SMTP_SECURE,
+    });
+  }
 
   // Gmail fallback: if STARTTLS on 587 times out, retry SMTPS 465.
   if (baseHost.includes("gmail.com") && env.SMTP_PORT === 587 && env.SMTP_SECURE === false) {
@@ -59,6 +61,13 @@ async function resolveSmtpTargets(env: Env): Promise<SmtpTarget[]> {
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(t);
+  }
+
+  if (targets.length === 0 && env.SMTP_FORCE_IPV4) {
+    throw Object.assign(
+      new Error("No IPv4 SMTP endpoints resolved. Keep SMTP_FORCE_IPV4=true and verify SMTP host/provider."),
+      { statusCode: 503 }
+    );
   }
 
   return deduped;
