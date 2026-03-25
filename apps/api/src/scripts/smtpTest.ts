@@ -53,6 +53,9 @@ async function run(): Promise<void> {
         host: t.host,
         port: t.port,
         secure: t.secure,
+        connectionTimeout: 12_000,
+        greetingTimeout: 12_000,
+        socketTimeout: 20_000,
         ...(t.tlsServername ? { tls: { servername: t.tlsServername } } : {}),
         auth: {
           user: env.SMTP_USER,

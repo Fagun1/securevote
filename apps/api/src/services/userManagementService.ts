@@ -19,36 +19,54 @@ export async function createAdminAccount(params: {
     throw Object.assign(new Error("Only super_admin can create admins"), { statusCode: 403 });
   }
   const normalizedEmail = email.toLowerCase();
-  const existing = await pool.query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
-  if (existing.rowCount) throw Object.assign(new Error("Email already registered"), { statusCode: 409 });
-
   const generatedPassword = generatePassword();
   const passwordHash = await bcrypt.hash(generatedPassword, 12);
   const encoded = await aiEncodeFace(env, faceImageBase64);
-  const created = await pool.query<{ id: string; email: string }>(
-    `INSERT INTO users (name, email, password, role, has_voted, face_encoding, is_verified)
-     VALUES ($1, $2, $3, 'admin', FALSE, $4::jsonb, TRUE)
-     RETURNING id, email`,
-    [name, normalizedEmail, passwordHash, JSON.stringify(encoded.encoding)]
-  );
-  const user = created.rows[0];
 
-  await sendCredentialsEmail({
-    env,
-    to: user.email,
-    name,
-    password: generatedPassword,
-    role: "admin",
-  });
-  await logAction({
-    pool,
-    userId: actor.userId,
-    action: "super_admin_created_admin",
-    ip: actor.ip,
-    metadata: { targetUserId: user.id, targetEmail: user.email },
-  });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await client.query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
+    if (existing.rowCount) throw Object.assign(new Error("Email already registered"), { statusCode: 409 });
 
-  return { id: user.id, email: user.email, role: "admin", generatedPassword };
+    const created = await client.query<{ id: string; email: string }>(
+      `INSERT INTO users (name, email, password, role, has_voted, face_encoding, is_verified)
+       VALUES ($1, $2, $3, 'admin', FALSE, $4::jsonb, TRUE)
+       RETURNING id, email`,
+      [name, normalizedEmail, passwordHash, JSON.stringify(encoded.encoding)]
+    );
+    const user = created.rows[0];
+
+    // Strict mode: account creation succeeds only if email is sent.
+    await sendCredentialsEmail({
+      env,
+      to: user.email,
+      name,
+      password: generatedPassword,
+      role: "admin",
+    });
+
+    await client.query("COMMIT");
+
+    try {
+      await logAction({
+        pool,
+        userId: actor.userId,
+        action: "super_admin_created_admin",
+        ip: actor.ip,
+        metadata: { targetUserId: user.id, targetEmail: user.email, emailSent: true },
+      });
+    } catch (e) {
+      console.error("Failed to write admin creation audit log", e);
+    }
+
+    return { id: user.id, email: user.email, role: "admin", generatedPassword };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function createVoterAccount(params: {
@@ -63,11 +81,7 @@ export async function createVoterAccount(params: {
   if (actor.role !== "admin" && actor.role !== "super_admin") {
     throw Object.assign(new Error("Only admin or super_admin can create voters"), { statusCode: 403 });
   }
-
   const normalizedEmail = email.toLowerCase();
-  const existing = await pool.query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
-  if (existing.rowCount) throw Object.assign(new Error("Email already registered"), { statusCode: 409 });
-
   const generatedPassword = generatePassword();
   const passwordHash = await bcrypt.hash(generatedPassword, 12);
   let faceEncoding: number[] | null = null;
@@ -76,30 +90,50 @@ export async function createVoterAccount(params: {
     faceEncoding = encoded.encoding;
   }
 
-  const created = await pool.query<{ id: string; email: string }>(
-    `INSERT INTO users (name, email, password, role, has_voted, face_encoding, is_verified)
-     VALUES ($1, $2, $3, 'voter', FALSE, $4::jsonb, $5)
-     RETURNING id, email`,
-    [name, normalizedEmail, passwordHash, faceEncoding ? JSON.stringify(faceEncoding) : null, faceEncoding ? true : false]
-  );
-  const user = created.rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await client.query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
+    if (existing.rowCount) throw Object.assign(new Error("Email already registered"), { statusCode: 409 });
 
-  await sendCredentialsEmail({
-    env,
-    to: user.email,
-    name,
-    password: generatedPassword,
-    role: "voter",
-  });
-  await logAction({
-    pool,
-    userId: actor.userId,
-    action: "admin_created_voter",
-    ip: actor.ip,
-    metadata: { targetUserId: user.id, targetEmail: user.email, hasFaceEnrollment: Boolean(faceEncoding) },
-  });
+    const created = await client.query<{ id: string; email: string }>(
+      `INSERT INTO users (name, email, password, role, has_voted, face_encoding, is_verified)
+       VALUES ($1, $2, $3, 'voter', FALSE, $4::jsonb, $5)
+       RETURNING id, email`,
+      [name, normalizedEmail, passwordHash, faceEncoding ? JSON.stringify(faceEncoding) : null, faceEncoding ? true : false]
+    );
+    const user = created.rows[0];
 
-  return { id: user.id, email: user.email, role: "voter", generatedPassword };
+    // Strict mode: account creation succeeds only if email is sent.
+    await sendCredentialsEmail({
+      env,
+      to: user.email,
+      name,
+      password: generatedPassword,
+      role: "voter",
+    });
+
+    await client.query("COMMIT");
+
+    try {
+      await logAction({
+        pool,
+        userId: actor.userId,
+        action: "admin_created_voter",
+        ip: actor.ip,
+        metadata: { targetUserId: user.id, targetEmail: user.email, hasFaceEnrollment: Boolean(faceEncoding), emailSent: true },
+      });
+    } catch (e) {
+      console.error("Failed to write voter creation audit log", e);
+    }
+
+    return { id: user.id, email: user.email, role: "voter", generatedPassword };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function setVoterFaceEncoding(params: {

@@ -112,6 +112,9 @@ export async function sendCredentialsEmail(params: {
         host: target.host,
         port: target.port,
         secure: target.secure,
+        connectionTimeout: 12_000,
+        greetingTimeout: 12_000,
+        socketTimeout: 20_000,
         ...(target.tlsServername ? { tls: { servername: target.tlsServername } } : {}),
         auth: {
           user: env.SMTP_USER,
