@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm run build:web",
     "dev:api": "npm run dev -w @securevote/api",
     "dev:web": "npm run dev -w @securevote/web",
     "build:api": "npm run build -w @securevote/api",
